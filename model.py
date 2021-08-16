@@ -646,9 +646,9 @@ class MIND(BasicModel):
         self.embed_level_id = nn.Embedding(self.feature_size[1], self.embedding_dim)
         
         # 进行过往经历的embedding
-        self.embed_shop_id = nn.Embedding(self.feature_size[2]+1, self.embedding_dim, padding_idx=self.feature_size[2])
-        self.embed_cate = nn.Embedding(self.feature_size[3]+1, self.embedding_dim, padding_idx=self.feature_size[3])
-        self.embed_floor = nn.Embedding(self.feature_size[4]+1, self.embedding_dim,padding_idx=self.feature_size[4])
+        self.embed_shop_id = nn.Embedding(self.feature_size[2]+1, self.embedding_dim, padding_idx=0)
+        self.embed_cate = nn.Embedding(self.feature_size[3]+1, self.embedding_dim, padding_idx=0)
+        self.embed_floor = nn.Embedding(self.feature_size[4]+1, self.embedding_dim,padding_idx=0)
 
         self.routing = Routing(max_len, input_units, output_units, iteration, max_k)
         self.label_linear = nn.Linear(self.embedding_dim, output_units)
@@ -674,9 +674,9 @@ class MIND(BasicModel):
             seq_lens.append(cur_shop_id.shape[0])
         seq_lens = torch.tensor(seq_lens).reshape(-1, 1)
       
-        pad_iter_fea_shop_id = torch.nn.utils.rnn.pad_sequence(iter_fea_shop_id, padding_value=self.feature_size[2]).t() # batch_size * maxseq
-        pad_iter_fea_cate = torch.nn.utils.rnn.pad_sequence(iter_fea_cate, padding_value=self.feature_size[3]).t()
-        pad_iter_fea_floor = torch.nn.utils.rnn.pad_sequence(iter_fea_floor, padding_value=self.feature_size[4]).t()
+        # pad_iter_fea_shop_id = torch.nn.utils.rnn.pad_sequence(iter_fea_shop_id, padding_value=self.feature_size[2]).t() # batch_size * maxseq
+        # pad_iter_fea_cate = torch.nn.utils.rnn.pad_sequence(iter_fea_cate, padding_value=self.feature_size[3]).t()
+        # pad_iter_fea_floor = torch.nn.utils.rnn.pad_sequence(iter_fea_floor, padding_value=self.feature_size[4]).t()
         seq_embed_pad_iter_fea_shop_id = self.embed_shop_id(pad_iter_fea_shop_id)
         seq_embed_pad_iter_fea_cate = self.embed_cate(pad_iter_fea_cate)
         seq_embed_pad_iter_fea_floor = self.embed_floor(pad_iter_fea_floor)

@@ -34,7 +34,7 @@ if __name__ == "__main__":
 
     shop_id_dict, cate_dict, floor_dict = load_dict("shop_id_dict"), load_dict("cate_dict"), load_dict("floor_dict")
     
-    model = YouTubeDNN([5, 1, len(shop_id_dict), len(cate_dict), len(floor_dict)], softmax_dims=147)
+    model = MIND([5, 1, len(shop_id_dict), len(cate_dict), len(floor_dict)], softmax_dims=147)
     model.fit(train_loader, valid_loader, train_epoch=25)
     userembedding = model.predict(user_embedding_loader, get_user_embedding=True)
     itemembedding = model.predict(item_embedding_loader, get_item_embedding=True)
