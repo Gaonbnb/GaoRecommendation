@@ -9,6 +9,7 @@ import time
 import os
 import random
 from sklearn.metrics import log_loss, roc_auc_score
+import log
 
 
 class BasicModel(nn.Module):
@@ -437,7 +438,7 @@ class YouTubeDNN(BasicModel):
         return score, x
 
 
-    def fit(self, train_loader, valid_loader, train_epoch = 50, learning_rate = 0.1, weight_decay = 0.00):
+    def fit(self, train_loader, valid_loader, train_epoch = 1, learning_rate = 0.1, weight_decay = 0.00):
         """Youtube dnn的训练，这里是softmax训练"""
         # youtube dnn配套
         # 选择设备
@@ -677,9 +678,9 @@ class MIND(BasicModel):
         # pad_iter_fea_shop_id = torch.nn.utils.rnn.pad_sequence(iter_fea_shop_id, padding_value=self.feature_size[2]).t() # batch_size * maxseq
         # pad_iter_fea_cate = torch.nn.utils.rnn.pad_sequence(iter_fea_cate, padding_value=self.feature_size[3]).t()
         # pad_iter_fea_floor = torch.nn.utils.rnn.pad_sequence(iter_fea_floor, padding_value=self.feature_size[4]).t()
-        seq_embed_pad_iter_fea_shop_id = self.embed_shop_id(pad_iter_fea_shop_id)
-        seq_embed_pad_iter_fea_cate = self.embed_cate(pad_iter_fea_cate)
-        seq_embed_pad_iter_fea_floor = self.embed_floor(pad_iter_fea_floor)
+        seq_embed_pad_iter_fea_shop_id = self.embed_shop_id(iter_fea_shop_id)
+        seq_embed_pad_iter_fea_cate = self.embed_cate(iter_fea_cate)
+        seq_embed_pad_iter_fea_floor = self.embed_floor(iter_fea_floor)
 
         B = seq_embed_pad_iter_fea_shop_id.shape[0] # batchsize
         # 序列的embed
@@ -689,7 +690,7 @@ class MIND(BasicModel):
         # other feature
         embedding_sex = self.embed_sex(cat_fea_sex) # batch_size * embedding_dim
         embedding_level_id = self.embed_level_id(cat_fea_level_id) # batch_size * embedding_dim
-        # user_embed
+        # user_embedc
         user_other_feature = torch.cat([torch.unsqueeze(embedding_sex, 1), torch.unsqueeze(embedding_level_id, 1)], dim=1) # 原始embed并列concat
         user_other_feature = torch.sum(user_other_feature, dim=1,keepdim=True)
 
@@ -713,7 +714,7 @@ class MIND(BasicModel):
         capsule_output_user_added = self.relu_linear_2(capsule_output_user_added)
         self.capsule_output_user_added = F.relu_(capsule_output_user_added)
 
-        log.logger.debug(self.label_embedding)
+        
         pos_label_embedding = self.label_embedding.reshape(B, -1, self.output_units)
         # print(pos_label_embedding.size())
         attention_weight = torch.mul(capsule_output_user_added, pos_label_embedding.repeat(1, self.max_k, 1)) # batchsize * k_len * outputunit

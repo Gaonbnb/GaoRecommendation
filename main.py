@@ -34,13 +34,13 @@ if __name__ == "__main__":
 
     shop_id_dict, cate_dict, floor_dict = load_dict("shop_id_dict"), load_dict("cate_dict"), load_dict("floor_dict")
     
-    model = MIND([5, 1, len(shop_id_dict), len(cate_dict), len(floor_dict)], softmax_dims=147)
-    model.fit(train_loader, valid_loader, train_epoch=25)
+    model = YouTubeDNN([5, 1, len(shop_id_dict), len(cate_dict), len(floor_dict)])
+    model.fit(train_loader, valid_loader)
     userembedding = model.predict(user_embedding_loader, get_user_embedding=True)
     itemembedding = model.predict(item_embedding_loader, get_item_embedding=True)
     
     match_result = recall_embedding(itemembedding, userembedding)
-    real_result = sample_data.groupby(by="userid").head(1).last_click
+    real_result = preparedata.user_embedding_sample_data().last_click.values.tolist()
     
     hit_rate_score = hit_rate(match_result, real_result)
     print(hit_rate_score)
