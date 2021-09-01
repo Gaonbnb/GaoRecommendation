@@ -7,3 +7,6 @@
 
 未来将对loss function进行改良，并且对整个的代码进行更加工程性的重构。下个版本目标是写一个gnn的召回模型
 
+神经网络训练的流程比较好的回答
+[神经网络不学习的原因](https://blog.csdn.net/hustqb/article/details/78648556)
+[深度学习模型训练的一般方法](https://www.pianshen.com/article/24541863128/)
