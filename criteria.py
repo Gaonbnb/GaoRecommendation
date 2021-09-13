@@ -3,9 +3,9 @@ import numpy as np
 
 def recall_embedding(xb, xq):
     xb, xq = np.array(xb).astype("float32"), np.array(xq).astype("float32")
-    index = faiss.IndexFlatL2(4)
-    # print(index.is_trained) # true
-    # print(xb.shape)
+    index = faiss.IndexFlatL2(8)
+    print(index.is_trained) # true
+    print(xb.shape)
     index.add(xb) # item_length * dim
     # print(index.ntotal) # item_length
     k = 5

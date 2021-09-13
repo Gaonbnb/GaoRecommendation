@@ -19,12 +19,13 @@ if __name__ == "__main__":
     # 准备数据
     preparedata = PrepareData(sample_data)
     # 训练数据
+    #train_data = JdataDataset(preparedata.train_sample_data())
     train_data = JdataDataset(preparedata.user_embedding_sample_data())
     train_loader = DataLoader(train_data, batch_size=64, shuffle=True, collate_fn=collate_fn, drop_last=True)
     # 验证数据
     
     valid_data = JdataDataset(preparedata.valid_softmax_loss_sample_data())
-    valid_loader = DataLoader(valid_data, batch_size=1, shuffle=False, collate_fn=collate_fn, drop_last=False)
+    valid_loader = DataLoader(valid_data, batch_size=64, shuffle=False, collate_fn=collate_fn, drop_last=False)
     # user线上embedding数据
     user_embedding_data = JdataDataset(preparedata.user_embedding_sample_data())
     user_embedding_loader = DataLoader(user_embedding_data, batch_size=1, shuffle=False, collate_fn=collate_fn, drop_last=False)
@@ -33,9 +34,16 @@ if __name__ == "__main__":
     item_embedding_loader = DataLoader(item_embedding_data, batch_size=1, shuffle=False, collate_fn=collate_fn, drop_last=False)
 
     shop_id_dict, cate_dict, floor_dict = load_dict("shop_id_dict"), load_dict("cate_dict"), load_dict("floor_dict")
-    
-    model = YouTubeDNN([5, 1, len(shop_id_dict), len(cate_dict), len(floor_dict)])
-    model.fit(train_loader, valid_loader)
+    # model = DSSM([5, 1, len(shop_id_dict), len(cate_dict), len(floor_dict)])
+    model = MIND([5, 1, len(shop_id_dict), len(cate_dict), len(floor_dict)], softmax_dims=147)
+
+    # for name, p in model.named_parameters():
+    #     print(name)
+    #     print(p.requires_grad)
+    #     print(...)
+
+    model.fit(train_loader, valid_loader, train_epoch=2)
+    # print(model.evaluate(model, user_embedding_loader)) 测试排序情况下是对的
     userembedding = model.predict(user_embedding_loader, get_user_embedding=True)
     itemembedding = model.predict(item_embedding_loader, get_item_embedding=True)
     

@@ -9,8 +9,13 @@ import time
 import os
 import random
 from sklearn.metrics import log_loss, roc_auc_score
-import log
+from log import Logger
+log = Logger('all.log',level='debug')
+from process_data import load_dict
+shop_id_dict = load_dict("shop_id_dict")
 
+# from torch.utils.tensorboard import SummaryWriter
+# writer = SummaryWriter("./picture")
 
 class BasicModel(nn.Module):
     """基础模型"""
@@ -37,7 +42,11 @@ class BasicModel(nn.Module):
         print("Model's state_dict:")
         for param_tensor in self.state_dict():
             print(param_tensor, "\t", self.state_dict()[param_tensor].size())
-            
+    def print_grad(self):
+        for name, parms in self.named_parameters():	
+            print('-->name:', name, '-->grad_requirs:',parms.requires_grad, \
+            ' -->grad_value:',parms.grad)
+
     def print_opt_state_dict(self, optimizer):
         """打印优化器的参数"""
         print("Optimizer's state_dict:")
@@ -64,6 +73,7 @@ class BasicModel(nn.Module):
         torch.save(self, "dssm_model.pt")
         model = torch.load("dssm_model.pt")
         model.eval()
+
     def weights_init(self, m):
         if isinstance(m, nn.Linear):
             nn.init.xavier_normal_(m.weight)
@@ -79,7 +89,7 @@ class BasicModel(nn.Module):
 #######DSSM模型最后的loss永远是31.33，不过是初始化，归一化，截断数据各种操作的结果都是一样的，不知道为什么,加减层数，改变神经元的个数都是不变的
 class DSSM(BasicModel):
     """DSSM模型"""
-    def __init__(self, feature_size, embedding_dim = 4, hidden_dims = [4, 4, 4], dropout = 0.0):
+    def __init__(self, feature_size, embedding_dim = 8, hidden_dims = [8, 8, 8], dropout = 0.0):
         """
         注意参数可以自行修改，输出的向量都是64维度
         
@@ -111,7 +121,7 @@ class DSSM(BasicModel):
         self.fc3 = nn.Linear(self.hidden_dims[1], self.hidden_dims[2])
         self.dropout = nn.Dropout(dropout)
 
-        self.bn = torch.nn.BatchNorm1d(4)
+        self.bn = torch.nn.BatchNorm1d(8)
         # self.output = nn.Linear(self.hidden_dims[2], 1)
         self.sigmoid = nn.Sigmoid()
     
@@ -123,6 +133,7 @@ class DSSM(BasicModel):
         # 计算物品和用户之间的相似度
         
         cosine = torch.cosine_similarity(output_user, output_item, dim = 1, eps = 1e-8)
+        
         #cosine = self.sigmoid(cosine)
         # print(cosine) # 加了sigmoid之后模型最后只有0.7311和0.2689两个数字
         
@@ -130,6 +141,7 @@ class DSSM(BasicModel):
         return cosine 
 
     def predict(self, embedding_loader, get_user_embedding=False, get_item_embedding=False):
+        self.eval()
         """
         提取得到embedding，user_embedding和item_embedding不可以同时取到，只能一个为True，并且注意输入的loader分别应该为不同的
         """
@@ -143,9 +155,10 @@ class DSSM(BasicModel):
                 cat_fea_sex, cat_fea_level_id, iter_fea_shop_id, iter_fea_cate, iter_fea_floor, candidate_shop_id, candidate_cate = x
 
                 if get_user_embedding:
-                    cat_fea_sex = torch.tensor([item.item() for item in cat_fea_sex])
-                    cat_fea_level_id = torch.tensor([item.item() for item in cat_fea_level_id])
-                    cat_fea_sex = cat_fea_sex + 1
+ 
+                    # cat_fea_sex = torch.tensor([item.item() for item in cat_fea_sex])
+                    # cat_fea_level_id = torch.tensor([item.item() for item in cat_fea_level_id])
+                    # cat_fea_sex = cat_fea_sex + 1
                     
                     #cat_fea_sex = cat_fea_sex.cuda()
                     #cat_fea_level_id = cat_fea_level_id.cuda()
@@ -153,8 +166,8 @@ class DSSM(BasicModel):
                     user_embedding = user_embedding.numpy().tolist()
                     all_user_embedding.extend(user_embedding)
                 else:
-                    candidate_shop_id = torch.tensor([item.item() for item in candidate_shop_id])
-                    candidate_cate = torch.tensor([item.item() for item in candidate_cate])
+                    # candidate_shop_id = torch.tensor([item.item() for item in candidate_shop_id])
+                    # candidate_cate = torch.tensor([item.item() for item in candidate_cate])
                     # candidate_shop_id = candidate_shop_id.cuda()
                     # candidate_cate = candidate_cate.cuda()
                     item_embedding = self.item_tower(candidate_shop_id, candidate_cate)
@@ -180,7 +193,6 @@ class DSSM(BasicModel):
         embedding_shop_id = self.embed_shop_id(iter_fea_shop_id).sum(1)
         embedding_cate = self.embed_cate(iter_fea_cate).sum(1)
         embedding_floor = self.embed_floor(iter_fea_floor).sum(1)
-        
         # embedding_shop_id = []
         # for shop_id in iter_fea_shop_id:
             
@@ -219,7 +231,9 @@ class DSSM(BasicModel):
         embedding_cat = torch.cat([embedding_sex, embedding_level_id, embedding_shop_id, embedding_cate, embedding_floor], dim = 1)
         # print(embedding_cat.size()) # batch_size * (embedding_dim * 5)
         # 将concat的部分输入全连接网络
+        
         embedding_cat = self.dropout(torch.tanh(self.fc1_user(embedding_cat)))
+        
         embedding_cat = self.bn(embedding_cat)
         embedding_cat = self.dropout(torch.tanh(self.fc2(embedding_cat)))
         embedding_cat = self.bn(embedding_cat)
@@ -253,7 +267,7 @@ class DSSM(BasicModel):
     def evaluate(self, model, valid_loader):
         """模型的验证，在模型的fit时自动被调用"""
         model.eval()
-        loss_fct = nn.BCELoss()
+        loss_fct = nn.BCEWithLogitsLoss()
         with torch.no_grad():
             valid_labels, valid_preds = [], []
             # all_user_embedding, all_item_embedding = [], []
@@ -270,7 +284,7 @@ class DSSM(BasicModel):
 
                 valid_labels.extend(label.cpu().numpy().tolist())
                 valid_preds.extend(pred)
-
+        
                 # print("valid_data: step {:04d} | loss {:.4f}".format(step+1, loss))
                 # print("********************************evaluation_metric*****************************")
                 
@@ -286,7 +300,7 @@ class DSSM(BasicModel):
             finally:
                 print("this epoch's valid process is finished, if then there are errors, look here")
                 
-    def fit(self, train_loader, valid_loader, train_epoch = 50, learning_rate = 0.1, weight_decay = 0.000):
+    def fit(self, train_loader, valid_loader, train_epoch = 50, learning_rate = 0.005, weight_decay = 0.000):
         """模型进行训练"""
         best_auc = 0.0
         # 选择设备
@@ -342,7 +356,9 @@ class DSSM(BasicModel):
             #     torch.save(model.state_dict(), "./save_model/DSSM.pkl")
             #     torch.save(model, "./save_model/DSSM_model.pkl")
             # print(best_auc)
-######模型倒是可以loss下降，但是最后的业务指标非常的差，不知道原因
+
+
+######模型倒是可以loss下降，但是最后的业务指标非常的差，不知道原因,已经找到了原因，是业务指标哪里写错了，就是用户和用户数据对不上，所以loss下降之后对应的召回情况和随便选是一样的
 class YouTubeDNN(BasicModel):
     """YouTubeDNN模型"""
     def __init__(self, feature_size, softmax_dims, embedding_dim = 4, hidden_dims = [8, 4, 4], dropout = 0.0):
@@ -362,9 +378,9 @@ class YouTubeDNN(BasicModel):
         self.embed_level_id = nn.Embedding(self.feature_size[1], self.embedding_dim)
         
         # 进行过往经历的embedding
-        self.embed_shop_id = nn.Embedding(self.feature_size[2]+1, self.embedding_dim)
-        self.embed_cate = nn.Embedding(self.feature_size[3]+2, self.embedding_dim)
-        self.embed_floor = nn.Embedding(self.feature_size[4]+1, self.embedding_dim)
+        self.embed_shop_id = nn.Embedding(self.feature_size[2]+1, self.embedding_dim,padding_idx=0)
+        self.embed_cate = nn.Embedding(self.feature_size[3]+2, self.embedding_dim,padding_idx=0)
+        self.embed_floor = nn.Embedding(self.feature_size[4]+1, self.embedding_dim,padding_idx=0)
 
         # 进行现在候选物品的embedding
         # self.candidate_shop_id = nn.Embedding(self.feature_size[2], self.embedding_dim)
@@ -383,6 +399,7 @@ class YouTubeDNN(BasicModel):
     def forward(self, cat_fea_sex, cat_fea_level_id, iter_fea_shop_id, iter_fea_cate, iter_fea_floor, candidate_shop_id, candidate_cate):
         """前向传播"""
         # 用户数据的embedding
+        
         cat_fea_sex = cat_fea_sex.cuda()
         cat_fea_level_id = cat_fea_level_id.cuda()
         candidate_cate = candidate_cate.cuda()
@@ -395,6 +412,7 @@ class YouTubeDNN(BasicModel):
 
         # # 过往经历的embedding
         embedding_shop_id = self.embed_shop_id(iter_fea_shop_id).sum(1)
+       
         embedding_cate = self.embed_cate(iter_fea_cate).sum(1)
         embedding_floor = self.embed_floor(iter_fea_floor).sum(1)
         # embedding_shop_id = []
@@ -438,7 +456,7 @@ class YouTubeDNN(BasicModel):
         return score, x
 
 
-    def fit(self, train_loader, valid_loader, train_epoch = 1, learning_rate = 0.1, weight_decay = 0.00):
+    def fit(self, train_loader, valid_loader, train_epoch = 50, learning_rate = 0.1, weight_decay = 0.00):
         """Youtube dnn的训练，这里是softmax训练"""
         # youtube dnn配套
         # 选择设备
@@ -562,6 +580,7 @@ class Routing(nn.Module):
         self.B_matrix = nn.init.normal_(torch.empty(1, self.max_k, self.max_len), mean=0, std=1)
         self.B_matrix.requires_grad = False
         
+
         assert torch.max(seq_len).item() <= self.max_len # 补齐之后的序列长度要小于max_len，要不就最长的补了之后还是不够长
         seq_len_tile = seq_len.repeat(1, self.max_k) # 对应维度乘倍数，然后多了的用0补前面，且repeat参数的个数不能少于张亮的维度的个数，这个就是在原来的维度重复max-k， 那可能就是batch_size * (self._max_k)
         
@@ -574,6 +593,7 @@ class Routing(nn.Module):
             ## W: B * max_k * max_len
             ## low_capsule_new: B * max_len * hidden_units
             pad = torch.ones_like(mask, dtype=torch.float32) * (-2 ** 16 + 1)
+            
             B_tile = self.B_matrix.repeat(B, 1, 1) # batch_size * max_k * max_len
             
             B_mask = torch.where(mask, B_tile, pad) # mask 是规则，true为B_tile, false为pad, batchsize * max_k * max_len, 矩阵表示为batch ， bj bi，后面的用超大负数代替
@@ -592,8 +612,11 @@ class Routing(nn.Module):
             low_capsule_new = torch.matmul(low_capsule, self.S_matrix)
             # print("wsize", W.size())
             # print("low_bapsule_new",low_capsule_new.size())
+            
             high_capsule_tmp = torch.bmm(W, low_capsule_new)   # batchsize * klen * outputunit
+            
             high_capsule = self.squash(high_capsule_tmp) # batch_size * klen * outputunit
+            
             
             # bij + ujSei
             # batch * outunit * seqlen
@@ -602,6 +625,7 @@ class Routing(nn.Module):
                 torch.matmul(high_capsule, torch.transpose(low_capsule_new, dim0=1, dim1=2)),
                 dim=0, keepdim=True
             )
+            
             # print(B_delta.size()) 
             # 1 * k_len * seqlen
             self.B_matrix += B_delta
@@ -625,10 +649,10 @@ class Routing(nn.Module):
         scalar_factor = vec_squared_norm / (1 + vec_squared_norm) / torch.sqrt(vec_squared_norm + 1e-9)
         vec_squashed = scalar_factor * inputs # element-wise
         return vec_squashed
-
+######中间relu函数直接全都干失活了
 class MIND(BasicModel):
     """MIND模型主网络，中间包括了胶囊网络"""
-    def __init__(self, feature_size, embedding_dim=4, max_len=4, input_units=4, output_units=8, iteration=1, max_k=3, p=2):
+    def __init__(self, feature_size, softmax_dims, embedding_dim=4, max_len=4, input_units=4, output_units=8, iteration=1, max_k=3, p=2):
         """
         feature_size:各个输入特征的分类数
         embedding_dim：开始的embedding层的维度
@@ -654,10 +678,12 @@ class MIND(BasicModel):
         self.routing = Routing(max_len, input_units, output_units, iteration, max_k)
         self.label_linear = nn.Linear(self.embedding_dim, output_units)
         self.user_linear = nn.Linear(self.embedding_dim, output_units)
-        self.capsule_linuear = nn.Linear(self.embedding_dim, output_units)
+        self.capsule_linuƒear = nn.Linear(self.embedding_dim, output_units)
         # 两个relu层
-        self.relu_linear_1 = nn.Linear(output_units, 128)
-        self.relu_linear_2 = nn.Linear(128, output_units)
+        # self.relu_linear_1 = nn.Linear(output_units, 16)
+        # self.relu_linear_2 = nn.Linear(16, output_units)
+
+        
         self.output_units = output_units
         self.input_units = input_units
 
@@ -670,18 +696,21 @@ class MIND(BasicModel):
             # 只能利用原生sum进行对应元素相加
         # batch_size * seqlen * embed_dim
         # seq_embed = [sum([self.embed_shop_id(cur_shop_id), self.embed_cate(cur_cate), self.embed_floor(cur_floor)]) for cur_shop_id, cur_cate, cur_floor in zip(iter_fea_shop_id, iter_fea_cate, iter_fea_floor)]
+        # 这里seq_lens是每个小序列的长度，这里有问题
+        
         seq_lens = []
         for cur_shop_id in iter_fea_shop_id:
-            seq_lens.append(cur_shop_id.shape[0])
+            
+            seq_lens.append(cur_shop_id.shape[0] - sum(cur_shop_id == 0).item())
         seq_lens = torch.tensor(seq_lens).reshape(-1, 1)
-      
-        # pad_iter_fea_shop_id = torch.nn.utils.rnn.pad_sequence(iter_fea_shop_id, padding_value=self.feature_size[2]).t() # batch_size * maxseq
-        # pad_iter_fea_cate = torch.nn.utils.rnn.pad_sequence(iter_fea_cate, padding_value=self.feature_size[3]).t()
-        # pad_iter_fea_floor = torch.nn.utils.rnn.pad_sequence(iter_fea_floor, padding_value=self.feature_size[4]).t()
+        
+       
+       
         seq_embed_pad_iter_fea_shop_id = self.embed_shop_id(iter_fea_shop_id)
         seq_embed_pad_iter_fea_cate = self.embed_cate(iter_fea_cate)
         seq_embed_pad_iter_fea_floor = self.embed_floor(iter_fea_floor)
-
+        
+     
         B = seq_embed_pad_iter_fea_shop_id.shape[0] # batchsize
         # 序列的embed
         seq_embed = sum([seq_embed_pad_iter_fea_shop_id, seq_embed_pad_iter_fea_floor, seq_embed_pad_iter_fea_cate]) # batch_size * max_seqlen * embed_dim
@@ -690,7 +719,9 @@ class MIND(BasicModel):
         # other feature
         embedding_sex = self.embed_sex(cat_fea_sex) # batch_size * embedding_dim
         embedding_level_id = self.embed_level_id(cat_fea_level_id) # batch_size * embedding_dim
-        # user_embedc
+        # print("embedding_sex", embedding_sex)
+        # print("embedding_level_id", embedding_level_id)
+        # user_embed
         user_other_feature = torch.cat([torch.unsqueeze(embedding_sex, 1), torch.unsqueeze(embedding_level_id, 1)], dim=1) # 原始embed并列concat
         user_other_feature = torch.sum(user_other_feature, dim=1,keepdim=True)
 
@@ -700,20 +731,24 @@ class MIND(BasicModel):
         embedding_candidate_cate = self.embed_cate(candidate_cate)
         # label embed
         candidate_feature = sum([embedding_candidate_cate, embedding_candidate_shop_id]).unsqueeze(1)
+        # print("candidate_feature", candidate_feature)
 
         user_ids_embedding = self.user_linear(user_other_feature) # batchsize * 1 * output_units
         self.label_embedding = self.label_linear(candidate_feature) # batchsize * 1 * output_units
 
         capsule_output = self.routing(seq_embed, seq_lens) # seq_lens没有定义
         # capsule_output = self.capsule_linuear(capsule_output) # batch_size * max_k * output_units
-        
+        # print("capsule_output", capsule_output) 这里还不是全都一样的
         # 两个相加相同纬度的只要小的是1维就可以通过广播来进行相加
-        capsule_output_user_added = capsule_output + user_ids_embedding
-        capsule_output_user_added = self.relu_linear_1(capsule_output_user_added)
-        capsule_output_user_added = F.relu_(capsule_output_user_added) # batchsize * max_k * output_units
-        capsule_output_user_added = self.relu_linear_2(capsule_output_user_added)
-        self.capsule_output_user_added = F.relu_(capsule_output_user_added)
-
+        
+        capsule_output_user_added = capsule_output 
+        self.capsule_output_user_added = capsule_output_user_added
+        # capsule_output_user_added = self.relu_linear_1(capsule_output_user_added)
+        # capsule_output_user_added = F.relu_(capsule_output_user_added) # batchsize * max_k * output_units
+        # capsule_output_user_added = self.relu_linear_2(capsule_output_user_added)
+        # capsule_output_user_added = F.relu_(capsule_output_user_added)
+        # # print(self.capsule_output_user_added) 发现这里relu将所有的tensor里面都变成0给失活了
+        # print("self_capsule_output_user_added", self.capsule_output_user_added)
         
         pos_label_embedding = self.label_embedding.reshape(B, -1, self.output_units)
         # print(pos_label_embedding.size())
@@ -723,21 +758,27 @@ class MIND(BasicModel):
         # print(attention_weight.size())
         attention_weight = torch.sum(attention_weight, dim=-1, keepdim=False) # batchsize * k_len
         # print(attention_weight.size())
+        # print(attention_weight) 这里的比例似乎是正常的
         attention_weight = nn.functional.softmax(attention_weight, dim=1) # batch_size * k_len
-        attention_output = capsule_output_user_added * attention_weight.unsqueeze(dim=-1)  # batch_size * k_len * output_nuit
-
-        attention_output = attention_output.view(attention_weight.size()[0], -1) # batch_size * (len_k * output_unit)
-
-        # 生成负样本
-        neg_sample_id = self.neg_sample(candidate_shop_id)
+        # 将k个兴趣的重要性表示出来,发现大部分都是一直在0.33附近，应该是softmax会限制的原因
+        # print(attention_weight)
         
+        attention_output = capsule_output_user_added * attention_weight.unsqueeze(dim=-1)  # batch_size * k_len * output_nuit
+        # print(attention_output) 在这里一个tensor里面的情况还是比较正常的,但是数值变得越来越小
+        attention_output = attention_output.view(attention_weight.size()[0], -1) # batch_size * (len_k * output_unit)
+        # print("first_attention_output", attention_output) 还是逐步变小的情况，但是不是小的特别夸张
+        # 生成负样本
+        # neg_sample_id = self.neg_sample(candidate_shop_id)
+        # print(attention_output)假如有relu就是0000一堆0了
         # 因为不定长度所以在这个创建
-        self.final_linear = nn.Linear(attention_output.size()[1], 146)
+        self.final_linear = nn.Linear(attention_output.size()[1], len(shop_id_dict)+1)
         
         attention_output = self.final_linear(attention_output)
         # print(attention_output.size()) # batchsize * 146
+        # print("attention_output", attention_output)
+        # 将整个relu部分都删除了还是有问题，就是loss到了一定的程度就不下降了，不知道什么问题
         return attention_output
-
+        
     def neg_sample(self, candidate_shop_id):
         neg_sample_id = list()
         for item in candidate_shop_id.numpy().tolist():
@@ -750,15 +791,15 @@ class MIND(BasicModel):
                     cur_sample_id.append(neg_sample_data)
             neg_sample_id.append(cur_sample_id)
         return neg_sample_id
-    def fit(self, train_loader, valid_loader):
+    def fit(self, train_loader, valid_loader, train_epoch = 50, learning_rate = 0.1, weight_decay = 0.00):
 
         device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         
-        optimizer = optim.Adam(self.parameters(), lr=0.005, weight_decay=0.001)
+        optimizer = optim.SGD(self.parameters(), lr=0.005)
         # self.print_opt_state_dict(optimizer)
-    
+        loss_entroy = nn.CrossEntropyLoss()
         print(self.get_parameter_number(self))
-        for epoch in range(1):
+        for epoch in range(train_epoch):
             model = self.train()
             # model.cuda()
             train_loss_sum = 0.0
@@ -766,41 +807,33 @@ class MIND(BasicModel):
             for step, (x, label) in enumerate(train_loader):
                 cat_fea_sex, cat_fea_level_id, iter_fea_shop_id, iter_fea_cate, iter_fea_floor, candidate_shop_id, candidate_cate = x
                 
-                    
-                cat_fea_sex = torch.tensor([item.item() for item in cat_fea_sex])
                 
-                cat_fea_level_id = torch.tensor([item.item() for item in cat_fea_level_id])
-                
-                cat_fea_sex = cat_fea_sex + 1
-
-                candidate_shop_id = torch.tensor([item.item() for item in candidate_shop_id])
-
-                candidate_cate = torch.tensor([item.item() for item in candidate_cate])
-
-
                 #cat_fea_sex = cat_fea_sex.cuda()
                 #cat_fea_level_id = cat_fea_level_id.cuda()
                 # candidate_shop_id = candidate_shop_id.cuda()
                 # candidate_cate = candidate_cate.cuda()
 
                 pred = model(cat_fea_sex, cat_fea_level_id, iter_fea_shop_id, iter_fea_cate, iter_fea_floor, candidate_shop_id, candidate_cate)
-                         
+                  
                 ## batch_size * 1
        
                 # pred = pred.squeeze(dim=-1).float()
                 # label = label.float()
                 # loss = F.binary_cross_entropy_with_logits(pred,label)
                 
-                loss = nn.CrossEntropyLoss()(pred, candidate_shop_id.long())
+                loss = loss_entroy(pred, candidate_shop_id)
+                # writer.add_scalar("loss/train", loss, step)
                 optimizer.zero_grad()
                 loss.backward()
-                optimizer.step()
+                
+
                 train_loss_sum += loss.cpu().item()
+                
                 if (step + 1) % 50 == 0 or (step + 1) == len(train_loader):
                         print("Epoch {:04d} | Step {:04d} / {} | Loss {:.4f} | Time {:.4f}".format(
                             epoch+1, step+1, len(train_loader), train_loss_sum/(step+1), time.time() - start_time))
-            
-            #self.evaluate(model, valid_loader)
+            # writer.flush()
+            self.evaluate(model, valid_loader)
 
 
     def evaluate(self, model, valid_loader):
@@ -814,28 +847,21 @@ class MIND(BasicModel):
             for step, (x, label) in enumerate(valid_loader):
                 cat_fea_sex, cat_fea_level_id, iter_fea_shop_id, iter_fea_cate, iter_fea_floor, candidate_shop_id, candidate_cate = x
                 
-                cat_fea_sex = torch.tensor([item.item() for item in cat_fea_sex])
                 
-                cat_fea_level_id = torch.tensor([item.item() for item in cat_fea_level_id])
-                
-                cat_fea_sex = cat_fea_sex + 1
-
-                candidate_shop_id = torch.tensor([item.item() for item in candidate_shop_id])
-
-                candidate_cate = torch.tensor([item.item() for item in candidate_cate])
-
                 #cat_fea_sex = cat_fea_sex.cuda()
                 #cat_fea_level_id = cat_fea_level_id.cuda()
                 
                 pred = model(cat_fea_sex, cat_fea_level_id, iter_fea_shop_id, iter_fea_cate, iter_fea_floor, candidate_shop_id, candidate_cate)
-                
-                label = torch.LongTensor([item.item() for item in label])
-                pred = pred.squeeze(dim=-1).float()
-                label = label.float()
-                loss = F.binary_cross_entropy_with_logits(pred,label)
+                # 同一个batch中的向量都变成一样的了
+                # print(pred)
+                # print(candidate_shop_id.long()) 
 
-                valid_labels.extend(label.cpu().numpy().tolist())
-                valid_preds.extend(pred)
+                loss = nn.CrossEntropyLoss()(pred, candidate_shop_id.long())
+                # label = torch.LongTensor([item.item() for item in label])
+                # pred = pred.squeeze(dim=-1).float()
+                # label = label.float()
+                # loss = F.binary_cross_entropy_with_logits(pred,label)
+            
                 valid_loss_sum += loss.item()
                 if (step + 1) % 50 == 0 or (step + 1) == len(valid_loader):
                         print("valid_data: Step {:04d} / {} | Loss {:.4f}".format(
@@ -857,7 +883,7 @@ class MIND(BasicModel):
                     candidate_shop_id = torch.tensor([item.item() for item in candidate_shop_id])
                     candidate_cate = torch.tensor([item.item() for item in candidate_cate])
                     pred = self(cat_fea_sex, cat_fea_level_id, iter_fea_shop_id, iter_fea_cate, iter_fea_floor, candidate_shop_id, candidate_cate)
-                    all_item_embedding.extend(self.label_embedding.numpy().tolist())
+                    all_item_embedding.extend(self.label_embedding.numpy().squeeze(1).tolist())
                 return torch.Tensor(all_item_embedding)
 
         else:
@@ -876,7 +902,7 @@ class MIND(BasicModel):
                     # candidate_shop_id = candidate_shop_id.cuda()
                     # candidate_cate = candidate_cate.cuda()
                     pred = self(cat_fea_sex, cat_fea_level_id, iter_fea_shop_id, iter_fea_cate, iter_fea_floor, candidate_shop_id, candidate_cate)
-                    all_user_embedding.extend(self.capsule_output_user_added.numpy().tolist())
+                    all_user_embedding.extend(self.capsule_output_user_added[:,0,:].squeeze(1).numpy().tolist())
                 return torch.Tensor(all_user_embedding)                  
  
 class GRU4REC(BasicModel):
