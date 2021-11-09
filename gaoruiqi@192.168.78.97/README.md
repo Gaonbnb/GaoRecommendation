@@ -1,5 +1,0 @@
-首先利用process_data.py进行数据的处理，然后利用load_data.py进行数据的载入，利用model.py中的模型进行训练，包括youtubednn，DSSM，MIND，GRU4rec。然后log.py是日志打印类，criteria.py是评价标准
-
-没有将所有的程序都组合在一起，但是整个的流程是可以跑通的，不过因为一直loss不会下降所以没有采用自己手写的模型进行，而利用deepmatch进行预测。
-
-v1.1 将整个的序列都输入之前利用padding进行处理，并且进行修改工作
