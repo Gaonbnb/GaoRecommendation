@@ -1,5 +1,0 @@
-2021-08-11 10:55:45,793 - log.py[line:34] - DEBUG: debug
-2021-08-11 10:55:45,793 - log.py[line:35] - INFO: info
-2021-08-11 10:55:45,793 - log.py[line:36] - WARNING: 警告
-2021-08-11 10:55:45,793 - log.py[line:37] - ERROR: 报错
-2021-08-11 10:55:45,793 - log.py[line:38] - CRITICAL: 严重
